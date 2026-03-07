@@ -1,0 +1,7 @@
+pandas
+requests
+pillow
+python-dotenv
+font-source-serif-pro
+font-source-sans-pro
+aggdraw

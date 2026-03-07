@@ -1,0 +1,11 @@
+.git
+.gitignore
+.idea
+__pycache__
+*.pyc
+.DS_Store
+.venv
+*.md
+deploy.sh
+Dockerfile
+.dockerignore
