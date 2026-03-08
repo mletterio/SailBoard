@@ -11,5 +11,6 @@ docker save "$IMAGE" | gzip | ssh "$REMOTE" "
     docker stop $IMAGE 2>/dev/null || true
     docker rm $IMAGE 2>/dev/null || true
     docker run -d --name $IMAGE --restart unless-stopped \
-        --device /dev/gpiomem --device /dev/spidev0.0 $IMAGE
+        --privileged \
+        $IMAGE
 "

@@ -11,7 +11,7 @@ from .base import DisplayBase, Color
 from .components import Fonts, draw_text, paste_icon
 from .vstack import VStack
 
-MARGIN = 10
+MARGIN = 8
 ICONS_DIR = os.path.join(os.path.dirname(__file__), "assets", "icons")
 
 _WIND_DIR_DEG = {
@@ -52,9 +52,9 @@ def _draw_footer(display: DisplayBase, y: int, h: int, updated_at=None):
               f"Updated: {ts}", Fonts.sans(15), Color.BLACK)
 
 
-COND_LINE_H = 16
-COND_OFFSET = 44
-ROW_BOTTOM_PAD = 12
+COND_LINE_H = 18
+COND_OFFSET = 28
+ROW_BOTTOM_PAD = 14
 
 
 def _forecast_row_h(n_cond_lines: int) -> int:
@@ -88,11 +88,11 @@ def _make_forecast_drawer(row_data: list):
             return
 
         arrow_path = os.path.join(ICONS_DIR, "nav-arrow.png")
-        arrow_sz = 24
+        arrow_sz = 26
         expanded = int(arrow_sz * 1.42) + 2
         arrow_right = display.width - MARGIN
         arrow_cx = arrow_right - expanded // 2
-        wind_font = Fonts.sans(20)
+        wind_font = Fonts.sans(22)
         wind_text_right = arrow_cx - expanded // 2 - 6
 
         for row, cond_lines, row_h in row_data:
@@ -103,13 +103,11 @@ def _make_forecast_drawer(row_data: list):
             dirn  = str(row.get('wind_direction') or '')
 
             # --- Left column ---
-            draw_text(display, (MARGIN, y), name, Fonts.sans(20), Color.BLACK)
-            if pd.notna(temp):
-                draw_text(display, (MARGIN, y + 24), f"{int(temp)}°F",
-                          Fonts.sans(16), Color.BLACK)
+            name_temp = f"{name} · {int(temp)}°F" if pd.notna(temp) else name
+            draw_text(display, (MARGIN, y), name_temp, Fonts.sans(22), Color.BLACK)
             for i, line in enumerate(cond_lines):
                 draw_text(display, (MARGIN, y + COND_OFFSET + i * COND_LINE_H),
-                          line, Fonts.sans(14), Color.BLACK)
+                          line, Fonts.sans(16), Color.BLACK)
 
             # --- Right column: wind text + arrow, top-aligned to period ---
             arrow_y = y + 2
@@ -134,11 +132,11 @@ def _make_tides_drawer(tides_df: pd.DataFrame):
     """Return a draw callable for the tides section."""
 
     def _draw(display: DisplayBase, y: int, h: int):
-        num_rows = min(4, len(tides_df))
+        num_rows = min(3, len(tides_df))
         table_h = num_rows * TIDE_ROW_H
 
-        title_font = Fonts.serif(22)
-        icon_sz = 20
+        title_font = Fonts.serif(25)
+        icon_sz = 25
 
         # --- Right column: tide table ---
         title_w = int(display.draw.textlength("Tides", font=title_font))
@@ -160,7 +158,7 @@ def _make_tides_drawer(tides_df: pd.DataFrame):
             height = row.get('tide_height_m', 0)
             draw_text(display, (table_x, table_y),
                       f"{time_str}  {tide_type}  {height:.1f}m",
-                      Fonts.sans(14), Color.BLACK)
+                      Fonts.sans(24), Color.BLACK)
             table_y += TIDE_ROW_H
 
     return _draw
@@ -197,7 +195,7 @@ class BoardLayout:
         forecast_h = sum(rh for _, _, rh in row_data)
 
         has_tides = tides_df is not None and not tides_df.empty
-        n_tides = min(4, len(tides_df)) if has_tides else 0
+        n_tides = min(3, len(tides_df)) if has_tides else 0
         tides_h = max(n_tides * TIDE_ROW_H, 70) if has_tides else 0
 
         stack = VStack(self.display.height)
@@ -207,7 +205,7 @@ class BoardLayout:
         stack.add("mid_gap", flex=1)
         if has_tides:
             stack.add("tides", height=tides_h,
-                      draw=_make_tides_drawer(tides_df))
+                      draw=_make_tides_drawer(tides_df.head(3)))
             stack.add("bot_gap", flex=1)
         stack.add("footer", height=FOOTER_H,
                   draw=lambda d, y, h: _draw_footer(d, y, h, updated_at))

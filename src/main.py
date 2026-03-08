@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import socket
 
 from data_manager import SailingDataManager
-from display import InkyDisplay, BoardLayout
+from display import InkyDisplay, BoardLayout, Orientation
 
 
 def has_internet(host="8.8.8.8", port=53, timeout=3) -> bool:
@@ -17,7 +17,7 @@ def has_internet(host="8.8.8.8", port=53, timeout=3) -> bool:
 
 
 def main():
-    display = InkyDisplay()
+    display = InkyDisplay(orientation=Orientation.PORTRAIT)
     sailing_data = SailingDataManager()
     layout = BoardLayout(display)
 
@@ -34,7 +34,7 @@ def main():
             display.show()
 
         now = datetime.now()
-        next_update = now + timedelta(minutes=2 - now.minute % 2, seconds=-now.second, microseconds=-now.microsecond)
+        next_update = now + timedelta(minutes=15 - now.minute % 15, seconds=-now.second, microseconds=-now.microsecond)
         time.sleep((next_update - now).total_seconds())
 
 
