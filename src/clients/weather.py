@@ -22,12 +22,20 @@ class NoaaWeatherClient(DataSource):
         self._grid_endpoint = props['forecastGridData']
         self._forecast_endpoint = props['forecast']
 
-    def fetch(self, start_time: datetime, end_time: datetime) -> pd.DataFrame:
+    def fetch(self, start_time: datetime, end_time: datetime, min_daytime_periods: int = 3) -> pd.DataFrame:
         wind_df = self._fetch_wind_data()
         forecast_df = self._fetch_forecast_data()
 
         wind_df = wind_df[(wind_df.index >= start_time) & (wind_df.index <= end_time)]
-        forecast_df = forecast_df[(forecast_df.index >= start_time) & (forecast_df.index <= end_time)]
+
+        forecast_df = forecast_df[forecast_df.index >= start_time]
+        daytime_periods = forecast_df[forecast_df['is_daytime']]
+        if len(daytime_periods) >= min_daytime_periods:
+            extended_end = daytime_periods.iloc[min_daytime_periods - 1]['period_end']
+            effective_end = max(end_time, extended_end)
+        else:
+            effective_end = end_time
+        forecast_df = forecast_df[forecast_df.index <= effective_end]
 
         return self._merge(wind_df, forecast_df)
 
