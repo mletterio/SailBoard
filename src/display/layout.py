@@ -1,89 +1,203 @@
-"""BoardLayout — the single place to control what appears on screen and where."""
+"""BoardLayout — stacked Header / Forecast / Tides layout for ePaper display."""
 
+import os
+import textwrap
 from datetime import datetime
 from typing import Optional
 
 import pandas as pd
 
 from .base import DisplayBase, Color
-from .components import Fonts, draw_text
-from .harbor_map import HarborMap
+from .components import Fonts, draw_text, paste_icon
+from .vstack import VStack
 
+MARGIN = 10
+ICONS_DIR = os.path.join(os.path.dirname(__file__), "assets", "icons")
+
+_WIND_DIR_DEG = {
+    'N': 0,   'NNE': 22,  'NE': 45,  'ENE': 67,
+    'E': 90,  'ESE': 112, 'SE': 135, 'SSE': 157,
+    'S': 180, 'SSW': 202, 'SW': 225, 'WSW': 247,
+    'W': 270, 'WNW': 292, 'NW': 315, 'NNW': 337,
+}
+
+
+# ---------------------------------------------------------------------------
+# Drawing helpers for each section
+# ---------------------------------------------------------------------------
+
+HEADER_H  = 58
+FOOTER_H  = 24
+ROW_H     = 72
+TIDE_ROW_H = 20
+
+
+def _draw_header(display: DisplayBase, y: int, h: int):
+    font = Fonts.serif(35)
+    text_y = y + 4
+    draw_text(display, (MARGIN, text_y), "Boston Harbor", font, Color.RED)
+
+    text_w = int(display.draw.textlength("Boston Harbor", font=font))
+    ascent, _ = font.getmetrics()
+    anchor_sz = 28
+    icon_y = text_y + ascent - anchor_sz
+    paste_icon(display, (MARGIN + text_w + 8, max(0, icon_y)),
+                       os.path.join(ICONS_DIR, "anchor-simple.png"),
+                       size=anchor_sz, color=Color.BLACK)
+
+
+def _draw_footer(display: DisplayBase, y: int, h: int, updated_at=None):
+    ts = (updated_at or datetime.now()).strftime('%H:%M:%S')
+    draw_text(display, (MARGIN, y + 2),
+              f"Updated: {ts}", Fonts.sans(15), Color.BLACK)
+
+
+def _make_forecast_drawer(df: pd.DataFrame):
+    """Return a draw callable for the forecast section."""
+
+    def _draw(display: DisplayBase, y: int, h: int):
+        if df.empty:
+            return
+
+        arrow_path = os.path.join(ICONS_DIR, "nav-arrow.png")
+        arrow_sz = 24
+        expanded = int(arrow_sz * 1.42) + 2
+        arrow_right = display.width - MARGIN
+        arrow_cx = arrow_right - expanded // 2
+
+        wind_font = Fonts.sans(20)
+        wind_text_right = arrow_cx - expanded // 2 - 6
+
+        row_h = min(ROW_H, h // min(3, len(df)))
+
+        for _, row in df.head(3).iterrows():
+            name  = str(row.get('period_name', 'Unknown'))[:15]
+            temp  = row.get('temperature_f')
+            speed = float(row.get('wind_speed_avg_kts') or 0)
+            gust  = float(row.get('wind_gust_max_kts') or 0)
+            dirn  = str(row.get('wind_direction') or '')
+            cond  = str(row.get('short_forecast') or '')
+
+            # --- Left column ---
+            # Line 1: period name
+            draw_text(display, (MARGIN, y), name,
+                      Fonts.sans(20), Color.BLACK)
+            # Line 2: temperature
+            if pd.notna(temp):
+                draw_text(display, (MARGIN, y + 24), f"{int(temp)}°F",
+                          Fonts.sans(16), Color.BLACK)
+            # Line 3: conditions — aggressive wrap
+            avail_w = wind_text_right - MARGIN - 8
+            left_col_chars = max(8, avail_w // 9)
+            cond_line = (textwrap.wrap(cond, width=left_col_chars) or [''])[0]
+            draw_text(display, (MARGIN, y + 44), cond_line,
+                      Fonts.sans(14), Color.BLACK)
+
+            # --- Right column: wind text + arrow, top-aligned to period ---
+            # Arrow top-aligned with the period name baseline area
+            arrow_y = y + 2
+            wind_deg = _WIND_DIR_DEG.get(dirn.upper().strip(), 0)
+            paste_icon(
+                display,
+                (arrow_cx - expanded // 2, arrow_y),
+                arrow_path, size=arrow_sz,
+                rotate_deg=wind_deg, expand=True)
+
+            # Speed stacked above direction, right-aligned to left of arrow
+            draw_text(display,
+                      (wind_text_right, arrow_y + 2),
+                      f"{speed:.0f}/{gust:.0f}kt",
+                      wind_font, Color.BLACK, anchor="rt")
+            draw_text(display,
+                      (wind_text_right, arrow_y + 20),
+                      dirn,
+                      wind_font, Color.BLACK, anchor="rt")
+
+            y += row_h
+
+    return _draw
+
+
+def _make_tides_drawer(tides_df: pd.DataFrame):
+    """Return a draw callable for the tides section."""
+
+    def _draw(display: DisplayBase, y: int, h: int):
+        num_rows = min(4, len(tides_df))
+        table_h = num_rows * TIDE_ROW_H
+
+        title_font = Fonts.serif(22)
+        icon_sz = 24
+
+        # --- Right column: tide table ---
+        title_w = int(display.draw.textlength("Tides", font=title_font))
+        table_x = MARGIN + max(title_w, icon_sz) + 18
+        table_y = y + max(0, (h - table_h) // 2)
+
+        # --- Left column: title + icon, top-aligned with the table ---
+        title_ascent = title_font.getmetrics()[0]
+        draw_text(display, (MARGIN, table_y), "Tides", title_font, Color.RED)
+        paste_icon(display, (MARGIN, table_y + title_ascent + 12),
+                   os.path.join(ICONS_DIR, "waves.png"),
+                   size=icon_sz, color=Color.BLACK)
+
+        for _, row in tides_df.head(num_rows).iterrows():
+            time_val = row.name if hasattr(row.name, 'strftime') else row.get('time')
+            time_str = (time_val.strftime('%a %H:%M')
+                        if hasattr(time_val, 'strftime') else str(time_val)[:10])
+            tide_type = row.get('tide_type', '').upper()[:1]
+            height = row.get('tide_height_m', 0)
+            draw_text(display, (table_x, table_y),
+                      f"{time_str}  {tide_type}  {height:.1f}m",
+                      Fonts.sans(14), Color.BLACK)
+            table_y += TIDE_ROW_H
+
+    return _draw
+
+
+# ---------------------------------------------------------------------------
+# Main layout class
+# ---------------------------------------------------------------------------
 
 class BoardLayout:
-    """Renders the complete SailBoard display.
+    """Renders the complete SailBoard display (300 wide × 400 tall, portrait).
 
-    Layout (landscape):
-    ┌─────────────────────────────────────┐
-    │  HEADER  title + timestamp          │
-    ├──────────────────┬──────────────────┤
-    │  FORECAST        │  TIDES           │
-    │  3 days, uniform │  upcoming H/L    │
-    ├──────────────────┴──────────────────┤
-    │  MAP  Mapbox + wind arrow           │
-    └─────────────────────────────────────┘
+    Uses a VStack to divide vertical space:
+      header  (fixed 48px)
+      forecast (fixed: 3 × row_h)
+      gap      (flex — splits remaining space with tides gap)
+      tides    (fixed: title/icon height or 4 rows)
+      gap      (flex)
+      footer   (fixed 24px)
     """
-
-    MARGIN        = 6
-    HEADER_H      = 60    # includes padding below title
-    MAP_FRACTION  = 0.35
-    FORECAST_DAYS = 3
-    TIDE_ROWS     = 4
 
     def __init__(self, display: DisplayBase):
         self.display = display
-        self.map_h = int(display.height * self.MAP_FRACTION)
-        self.col_x = display.width // 2    # x where right column starts
 
     def render(
         self,
         forecast_df: pd.DataFrame,
         tides_df: Optional[pd.DataFrame] = None,
-        wind_dir: str = None,
-        wind_speed: float = None,
         updated_at: datetime = None,
     ):
         self.display.clear()
-        self._draw_header(updated_at)
-        self._draw_forecast(forecast_df, y=self.HEADER_H, x=self.MARGIN)
-        if tides_df is not None and not tides_df.empty:
-            self._draw_tides(tides_df, y=self.HEADER_H, x=self.col_x)
-        self._draw_map(wind_dir, wind_speed)
 
-    def _draw_header(self, updated_at: datetime = None):
-        draw_text(self.display, (self.MARGIN, 2), "Boston Harbor", Fonts.sans(28), Color.RED)
-        ts = (updated_at or datetime.now()).strftime('%H:%M')
-        draw_text(self.display, (self.MARGIN, 36), f"Updated: {ts}", Fonts.sans(14))
+        n_forecast = min(3, len(forecast_df)) if not forecast_df.empty else 0
+        forecast_h = n_forecast * ROW_H
 
-    def _draw_forecast(self, df: pd.DataFrame, y: int, x: int):
-        if df.empty:
-            return
-        font = Fonts.sans(16)
-        for _, row in df.head(self.FORECAST_DAYS).iterrows():
-            name  = row.get('period_name', 'Unknown')
-            speed = row.get('wind_speed_avg_kts', 0) or 0
-            gust  = row.get('wind_gust_max_kts', 0) or 0
-            dirn  = row.get('wind_direction', '')
-            cond  = row.get('short_forecast', '')
-            draw_text(self.display, (x, y),      name[:10],                        font, Color.RED)
-            draw_text(self.display, (x, y + 18), f"{speed:.0f}/{gust:.0f}kt {dirn}", font)
-            draw_text(self.display, (x, y + 36), cond[:18],                        Fonts.sans(13))
-            y += 58
+        has_tides = tides_df is not None and not tides_df.empty
+        n_tides = min(4, len(tides_df)) if has_tides else 0
+        tides_h = max(n_tides * TIDE_ROW_H, 70) if has_tides else 0
 
-    def _draw_tides(self, tides_df: pd.DataFrame, y: int, x: int):
-        draw_text(self.display, (x, y), "Tides", Fonts.sans(16), Color.RED)
-        y += 20
-        font = Fonts.sans(14)
-        for _, row in tides_df.head(self.TIDE_ROWS).iterrows():
-            time_val  = row.name if hasattr(row.name, 'strftime') else row.get('time')
-            time_str  = time_val.strftime('%a %H:%M') if hasattr(time_val, 'strftime') else str(time_val)[:10]
-            tide_type = row.get('tide_type', '').upper()[:1]
-            height    = row.get('tide_height_m', 0)
-            draw_text(self.display, (x, y), f"{time_str} {tide_type} {height:.1f}m", font)
-            y += 18
-
-    def _draw_map(self, wind_dir: str = None, wind_speed: float = None):
-        map_y = self.display.height - self.map_h
-        HarborMap(self.display, pos=(0, map_y), size=(self.display.width, self.map_h)).render(
-            wind_direction=wind_dir, wind_speed=wind_speed
-        )
+        stack = VStack(self.display.height)
+        stack.add("header", height=HEADER_H, draw=_draw_header)
+        stack.add("forecast", height=forecast_h,
+                  draw=_make_forecast_drawer(forecast_df))
+        stack.add("mid_gap", flex=1)
+        if has_tides:
+            stack.add("tides", height=tides_h,
+                      draw=_make_tides_drawer(tides_df))
+            stack.add("bot_gap", flex=1)
+        stack.add("footer", height=FOOTER_H,
+                  draw=lambda d, y, h: _draw_footer(d, y, h, updated_at))
+        stack.resolve()
+        stack.render(self.display)

@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from PIL import ImageFont
+from PIL import Image, ImageFont
 from font_source_serif_pro import SourceSerifProSemibold
 from font_source_sans_pro import SourceSansProSemibold
 
@@ -38,11 +38,20 @@ def draw_text(
     display.draw.text(pos, text, fill=color, font=font, anchor=anchor)
 
 
-def draw_line(
+def paste_icon(
     display: DisplayBase,
-    start: Tuple[int, int],
-    end: Tuple[int, int],
+    pos: Tuple[int, int],
+    icon_path: str,
+    size: int = 32,
+    rotate_deg: float = 0,
+    expand: bool = False,
     color: int = Color.BLACK,
-    width: int = 1,
 ):
-    display.draw.line([start, end], fill=color, width=width)
+    icon = Image.open(icon_path).convert("RGBA")
+    icon = icon.resize((size, size), Image.LANCZOS)
+    if rotate_deg:
+        icon = icon.rotate(-rotate_deg, resample=Image.BICUBIC, expand=expand)
+    tile = Image.new("P", icon.size, color)
+    tile.putpalette(display.canvas.getpalette())
+    alpha = icon.split()[3].point(lambda a: 255 if a > 128 else 0)
+    display.canvas.paste(tile, pos, alpha)

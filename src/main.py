@@ -30,10 +30,7 @@ def main():
             forecast = sailing_data.get_daytime_forecast(num_days=3)
             tides = sailing_data.get_next_tides(4)
 
-            wind_dir   = forecast.iloc[0].get('wind_direction', 'N')   if not forecast.empty else 'N'
-            wind_speed = forecast.iloc[0].get('wind_speed_avg_kts', 0) if not forecast.empty else 0
-
-            layout.render(forecast, tides, wind_dir, wind_speed, datetime.now())
+            layout.render(forecast, tides, datetime.now())
             display.show()
 
         now = datetime.now()
