@@ -135,7 +135,7 @@ def _make_tides_drawer(tides_df: pd.DataFrame):
         num_rows = min(3, len(tides_df))
         table_h = num_rows * TIDE_ROW_H
 
-        title_font = Fonts.serif(25)
+        title_font = Fonts.serif(28)
         icon_sz = 25
 
         # --- Right column: tide table ---
@@ -146,7 +146,7 @@ def _make_tides_drawer(tides_df: pd.DataFrame):
         # --- Left column: title + icon, top-aligned with the table ---
         title_ascent = title_font.getmetrics()[0]
         draw_text(display, (MARGIN, table_y), "Tides", title_font, Color.RED)
-        paste_icon(display, (MARGIN + 18, table_y + title_ascent + 10),
+        paste_icon(display, (MARGIN + 20, table_y + title_ascent + 10),
                    os.path.join(ICONS_DIR, "waves.png"),
                    size=icon_sz, color=Color.BLACK)
 

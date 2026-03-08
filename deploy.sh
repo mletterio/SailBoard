@@ -12,5 +12,6 @@ docker save "$IMAGE" | gzip | ssh "$REMOTE" "
     docker rm $IMAGE 2>/dev/null || true
     docker run -d --name $IMAGE --restart unless-stopped \
         --privileged \
+        -v /etc/localtime:/etc/localtime:ro \
         $IMAGE
 "
